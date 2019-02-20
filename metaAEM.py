@@ -1,7 +1,8 @@
 #!/bin/python
 
-import requests
 from bs4 import BeautifulSoup
+import requests
+import sys
 import urllib.parse
 
 validPathTypes = ["sling:Folder", "sling:OrderedFolder", "nt:folder", "nt:unstructured", "cq:Page", "cq:PageContent"]
@@ -60,7 +61,7 @@ def recursiveLookup(baseUrl, path, retries=3):
 
 				# Check if file is a validContentType
 				nodeType = rowVal.find_all("td")[2].text
-				if nodeType in validContentType:
+				if nodeType in validContentTypes:
 					# Download file and scrape metadata
 					# TODO
 					print("Downloading: %s" % (nodeName))
@@ -87,7 +88,7 @@ def recursiveLookup(baseUrl, path, retries=3):
 			recursiveLookup(baseUrl, path, retries - 1)
 
 def main():
-	baseUrl = "https://s-wcm.dinersclub.com"
+	baseUrl = str(sys.argv[1])
 	if checkContentExplorer(baseUrl):
 		localPaths = getTree(baseUrl, "/")
 		for path in localPaths:
