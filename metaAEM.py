@@ -4,11 +4,15 @@ from bs4 import BeautifulSoup
 import requests
 import sys
 import urllib.parse
+import tempfile
+import subprocess
+import time
 
 validPathTypes = ["sling:Folder", "sling:OrderedFolder", "nt:folder", "nt:unstructured", "cq:Page", "cq:PageContent"]
 validContentTypes = ["dam:Asset"]
+metaDataFiles = {}
 
-userMetaDataCriteria = ["jcr:createdBy", "jcr:lastModifiedBy"]
+userMetaDataCriteria = ["jcr:createdBy", "jcr:lastModifiedBy", "cq:lastModifiedBy", "cq:lastPublishedBy", "cq:lastReplicatedBy"]
 userMetaData = []
 
 s = requests.Session()
@@ -63,7 +67,8 @@ def recursiveLookup(baseUrl, path, retries=3):
 				nodeType = rowVal.find_all("td")[2].text
 				if nodeType in validContentTypes:
 					# Download file and scrape metadata
-					# TODO
+					fileLocation = rowVal.find_all("td")[0].find("img").attrs["alt"]
+					metaDataFiles[fileLocation] = nodeName
 					print("Downloading: %s" % (nodeName))
 
 
@@ -81,20 +86,42 @@ def recursiveLookup(baseUrl, path, retries=3):
 						recursiveLookup(baseUrl, queryPath)
 		else:
 			print("Not able to lookup data")
-	except requests.exceptions.SSLError:
+	except:
 		if retries == 0:
 			return
 		else:
+			time.sleep(5)
 			recursiveLookup(baseUrl, path, retries - 1)
 
+def dumpMetadata(baseUrl, files):
+	for file in files.keys():
+		temp = tempfile.NamedTemporaryFile()
+		url = baseUrl + file
+		resp = s.get(url)
+		temp.write(resp.content)
+		command = ["/usr/bin/exiftool", temp.name]
+		proc = subprocess.Popen(command, stdout=subprocess.PIPE)
+		output = proc.stdout.read()
+		print("="*25)
+		results = ouput.decode("utf-8")
+		results = results.replace(temp.name.split('/')[-1], files[file])
+		results = results.replace('/tmp', "/".join(file.split("/")[:-1]) + "/")
+		print(results)
+		temp.close()
+
 def main():
+	if len(sys.argv) != 2:
+		print("Usage: python3 ./metaAEM.py https://mydomain.com")
+		sys.exit(0)
+
 	baseUrl = str(sys.argv[1])
 	if checkContentExplorer(baseUrl):
-		localPaths = getTree(baseUrl, "/")
-		for path in localPaths:
-			recursiveLookup(baseUrl, path)
+		recursiveLookup(baseUrl, "/")
 
-	print("Users:")
-	for user in userMetaData:
-		print(user)
+		if len(userMetaData) > 0:
+			print("Users:")
+			for user in userMetaData:
+				print(user)
+
+		dumpMetadata(baseUrl, metaDataFiles)
 main()
